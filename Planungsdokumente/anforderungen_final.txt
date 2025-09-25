@@ -1,0 +1,22 @@
+Meine Analyse und Priorisierung
+
+1) Das System ermöglicht das Anlegen, Bearbeiten und Löschen von Pflanzen mit Stammdaten (Name, Art, Standort, Kaufdatum, Notizen).
+Aufwand: ca. 8 Stunden
+Begründung: Grundfunktion, auf der alle weiteren Features basieren. Mehr Aufwand da ich mich ertmal in Postgresql einfinden muss.
+
+2) Das System ermöglicht das Hinterlegen von Gießintervallen je Pflanze (z. B. alle X Tage) mit Startdatum.
+Aufwand: ca. 6 Stunden
+Begründung: Gießen ist die wichtigste Pflegeaufgabe für Pflanzen.
+
+3) Das System ermöglicht das Hinterlegen von Düngeintervallen je Pflanze (z. B. alle X Tage) inkl. Düngerart.
+Aufwand: ca. 5 Stunden
+Begründung: Ergänzt die Kernfunktion „Gießen“ und macht die App umfassender.
+
+4) Das System zeigt eine Übersicht „heute fällig / demnächst fällig / überfällig“ für Pflegeaufgaben an.
+Aufwand: ca. 7 Stunden
+Begründung: Diese Übersicht ist zentral für die Nutzerfreundlichkeit. Kann vllt in einer Art von Benachrichtigung passieren (Wenn App, dann Push-Benachrichtigung, als Desktop/Online Anwendung in E-Mail Form ). 
+
+5) Das System ermöglicht das Bestätigen einer durchgeführten Pflege (Gießen/Düngen) und verschiebt die nächste Fälligkeit automatisch.
+Aufwand: ca. 6 Stunden
+Begründung: Automatisierung sorgt für Komfort und reduziert den Verwaltungsaufwand, wird durch die Automatisierung erst sinnvol zu nutzen. 
+
