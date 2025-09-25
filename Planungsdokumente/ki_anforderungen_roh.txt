@@ -1,0 +1,28 @@
+Prompt(verbessert mit KI):
+
+"Ich plane eine Desktop-Anwendung (keine Handy-App) namens „Pflanzenpflege-Assistent“ für Windows/.NET  mit SQL-Datenbank.
+Erzeuge genau 10 präzise, testbare funktionale Anforderungen (keine nicht-funktionalen). Formuliere jeweils als: „Das System ermöglicht …“.
+Fokus: Zimmerpflanzen verwalten, Gieß-/Dünge-Erinnerungen, Pflege-Logs, Suche/Filter, Export. Single-User-Desktop (keine Cloud-Pflicht)."
+
+Ungefiltterete Antwort der KI:
+
+Das System ermöglicht das Anlegen, Bearbeiten und Löschen von Pflanzen mit Attributen (Name, Art, Standort, Topfgröße, Kaufdatum, Notizen).
+
+Das System ermöglicht das Hinterlegen von Gießintervallen je Pflanze (z. B. alle X Tage) inkl. Startdatum.
+
+Das System ermöglicht das Hinterlegen von Düngeintervallen je Pflanze (z. B. alle X Tage) inkl. Düngerart.
+
+Das System zeigt eine Übersicht „Heute fällig / demnächst fällig / überfällig“ für Gießen und Düngen an.
+
+Das System ermöglicht Desktop-Benachrichtigungen, wenn eine Pflege fällig wird.
+
+Das System ermöglicht das Bestätigen einer Pflege (Gießen/Düngen) und verschiebt die nächste Fälligkeit automatisch.
+
+Das System protokolliert jede Pflege in einem Aktivitäten-Log je Pflanze (Datum, Maßnahme, optionale Menge/Notiz).
+
+Das System ermöglicht Suche und Filter (z. B. Name, Standort, in X Tagen fällig, überfällig).
+
+Das System ermöglicht CSV-Export der Pflanzenliste und des Pflege-Logs.
+
+Das System ermöglicht CSV-Import der Pflanzenstammdaten.
+
