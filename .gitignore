@@ -1,2 +1,36 @@
+# Ignore build output
+bin/
+obj/
+
+# Visual Studio / VS Code cache
+.vs/
+.vscode/
+
+# User-specific files
+*.user
+*.userprefs
+*.suo
+
+# Mac-System files
 .DS_Store
 
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.cache
+*.bak
+*.swp
+
+# dotnet artifacts
+*.dll
+*.pdb
+*.exe
+
+# NuGet packages
+*.nupkg
+packages/
+
+# JetBrains IDE
+.idea/
