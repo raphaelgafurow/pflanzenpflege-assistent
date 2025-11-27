@@ -34,3 +34,5 @@ packages/
 
 # JetBrains IDE
 .idea/
+
+.fake
