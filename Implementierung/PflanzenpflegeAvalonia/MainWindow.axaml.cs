@@ -1,11 +1,630 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Microsoft.EntityFrameworkCore;
+using PflanzenpflegeAvalonia.Data;
+using PflanzenpflegeAvalonia.Models;
 
 namespace PflanzenpflegeAvalonia;
 
 public partial class MainWindow : Window
 {
+    private readonly ObservableCollection<PflanzenUebersichtItem> _pflanzen = new();
+    private readonly ObservableCollection<RegelViewItem> _regeln = new();
+    private readonly ObservableCollection<PflegeEintragViewItem> _eintraege = new();
+    private PflanzenUebersichtItem? _ausgewaehltePflanze;
+    private int? _regelIdZumBearbeiten;
+
     public MainWindow()
     {
         InitializeComponent();
+
+        PflanzenDataGrid.ItemsSource = _pflanzen;
+        RegelnDataGrid.ItemsSource = _regeln;
+        TabEintraegeDataGrid.ItemsSource = _eintraege;
+
+        TabRegelTypComboBox.ItemsSource = new[] { "Giessen", "Düngen", "Umtopfen" };
+        TabRegelTypComboBox.SelectedIndex = 0;
+        TabRegelStartdatumPicker.SelectedDate = DateTimeOffset.Now;
+
+        TabEintragTypComboBox.ItemsSource = new[] { "Giessen", "Düngen", "Umtopfen" };
+        TabEintragTypComboBox.SelectedIndex = 0;
+        TabEintragDatumPicker.SelectedDate = DateTimeOffset.Now;
+        TabKaufdatumPicker.SelectedDate = DateTimeOffset.Now;
+
+        PflanzenDataGrid.SelectionChanged += (_, _) => PflanzeAusgewaehlt();
+        RegelnDataGrid.SelectionChanged += (_, _) => LadeRegelInFormular();
+        TabEintraegeDataGrid.SelectionChanged += (_, _) => LadeEintragInFormular();
+
+        BtnPflanzeAnlegen.Click += (_, _) => MainTabs.SelectedIndex = 1;
+        BtnPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
+        BtnRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
+        BtnEintraegeBearbeiten.Click += (_, _) => OeffneEintraegeTab();
+        BtnBeenden.Click += (_, _) => Close();
+        BtnRegelLoeschen.Click += async (_, _) => await RegelLoeschen();
+
+        MenuUebersicht.Click += (_, _) => MainTabs.SelectedIndex = 0;
+        MenuPflanzeAnlegen.Click += (_, _) => MainTabs.SelectedIndex = 1;
+        MenuPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
+        MenuRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
+        MenuEintraege.Click += (_, _) => OeffneEintraegeTab();
+        MenuBeenden.Click += (_, _) => Close();
+        MenuAktualisieren.Click += (_, _) => LadeDaten();
+
+        TabPflanzeSpeichernButton.Click += (_, _) => PflanzeAusTabSpeichern();
+        TabPflanzeZuruecksetzenButton.Click += (_, _) => PflanzeTabZuruecksetzen();
+        TabRegelSpeichernButton.Click += (_, _) => RegelAusTabSpeichern();
+        TabRegelNeuButton.Click += (_, _) => RegelTabZuruecksetzen();
+
+        TabEintragHinzufuegenButton.Click += (_, _) => EintragAusTabHinzufuegen();
+        TabEintragAendernButton.Click += (_, _) => EintragAusTabAendern();
+        TabEintragLoeschenButton.Click += async (_, _) => await EintragAusTabLoeschen();
+        TabEintragZuruecksetzenButton.Click += (_, _) => EintragTabZuruecksetzen();
+
+        LadeDaten();
+    }
+
+    private void LadeDaten()
+    {
+        _pflanzen.Clear();
+
+        using var db = new AppDbContext();
+        var pflanzen = db.Pflanzen
+            .Include(x => x.Regeln)
+            .OrderBy(x => x.Name)
+            .ToList();
+
+        foreach (var p in pflanzen)
+        {
+            var (date, typ) = BerechneNaechstePflege(p.Regeln);
+            var nextText = date is null ? "-" : $"{date:dd.MM.yyyy} ({typ})";
+
+            _pflanzen.Add(new PflanzenUebersichtItem
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Art = p.Art,
+                Standort = p.Standort,
+                NaechstePflege = nextText
+            });
+        }
+
+        _ausgewaehltePflanze = null;
+        _regelIdZumBearbeiten = null;
+        _regeln.Clear();
+        _eintraege.Clear();
+        AusgewaehltText.Text = "Ausgewählt: -";
+        NaechstePflegeText.Text = "-";
+        TabRegelNameText.Text = "Bitte in Übersicht eine Pflanze wählen";
+        TabEintraegeNameText.Text = "Bitte in Übersicht eine Pflanze wählen";
+        StatusSetzen($"Übersicht aktualisiert ({_pflanzen.Count} Pflanzen).");
+    }
+
+    private void PflanzeAusgewaehlt()
+    {
+        _ausgewaehltePflanze = PflanzenDataGrid.SelectedItem as PflanzenUebersichtItem;
+        if (_ausgewaehltePflanze is null)
+        {
+            AusgewaehltText.Text = "Ausgewählt: -";
+            NaechstePflegeText.Text = "-";
+            _regeln.Clear();
+            _eintraege.Clear();
+            _regelIdZumBearbeiten = null;
+            return;
+        }
+
+        AusgewaehltText.Text = $"Ausgewählt: {_ausgewaehltePflanze.Name} - {_ausgewaehltePflanze.Standort}";
+        TabRegelNameText.Text = $"{_ausgewaehltePflanze.Name} - {_ausgewaehltePflanze.Standort}";
+        TabEintraegeNameText.Text = $"{_ausgewaehltePflanze.Name} - {_ausgewaehltePflanze.Standort}";
+
+        LadeRegelnFuerAuswahl();
+        LadeEintraegeFuerAuswahl();
+    }
+
+    private void LadeRegelnFuerAuswahl()
+    {
+        _regeln.Clear();
+        if (_ausgewaehltePflanze is null)
+        {
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var regeln = db.PflegeRegeln
+            .Where(r => r.PflanzeId == _ausgewaehltePflanze.Id)
+            .OrderBy(r => r.Typ)
+            .ToList();
+
+        foreach (var regel in regeln)
+        {
+            _regeln.Add(new RegelViewItem
+            {
+                Id = regel.Id,
+                Typ = regel.Typ,
+                Intervall = $"{regel.IntervallTage} Tage",
+                Startdatum = regel.Startdatum.ToString("dd.MM.yyyy")
+            });
+        }
+
+        var (date, typ) = BerechneNaechstePflege(regeln);
+        NaechstePflegeText.Text = date is null ? "-" : $"{date:dd.MM.yyyy}\n{typ}";
+    }
+
+    private static (DateTime? Date, string Typ) BerechneNaechstePflege(IEnumerable<PflegeRegel> regeln)
+    {
+        DateTime? bestDate = null;
+        var bestTyp = string.Empty;
+        var heute = DateTime.Today;
+
+        foreach (var regel in regeln)
+        {
+            if (regel.IntervallTage <= 0)
+            {
+                continue;
+            }
+
+            var naechste = regel.Startdatum.Date;
+            while (naechste < heute)
+            {
+                naechste = naechste.AddDays(regel.IntervallTage);
+            }
+
+            if (bestDate is null || naechste < bestDate)
+            {
+                bestDate = naechste;
+                bestTyp = regel.Typ;
+            }
+        }
+
+        return (bestDate, bestTyp);
+    }
+
+    private void LadeEintraegeFuerAuswahl()
+    {
+        _eintraege.Clear();
+        if (_ausgewaehltePflanze is null)
+        {
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var rows = db.PflegeEintraege
+            .Where(x => x.PflanzeId == _ausgewaehltePflanze.Id)
+            .OrderByDescending(x => x.Datum)
+            .ToList();
+
+        foreach (var row in rows)
+        {
+            _eintraege.Add(new PflegeEintragViewItem
+            {
+                Id = row.Id,
+                Datum = row.Datum.ToString("dd.MM.yyyy"),
+                Typ = row.Typ,
+                Menge = row.Menge,
+                Notiz = row.Notiz
+            });
+        }
+    }
+
+    private async System.Threading.Tasks.Task PflanzeLoeschen()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst eine Pflanze auswählen.");
+            return;
+        }
+
+        var bestaetigt = await LoeschungBestaetigen(
+            $"Möchtest du die Pflanze \"{_ausgewaehltePflanze.Name}\" wirklich löschen?");
+        if (!bestaetigt)
+        {
+            StatusSetzen("Löschen abgebrochen.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var pflanze = db.Pflanzen.FirstOrDefault(x => x.Id == _ausgewaehltePflanze.Id);
+        if (pflanze is null)
+        {
+            StatusSetzen("Pflanze wurde nicht gefunden.");
+            return;
+        }
+
+        db.Pflanzen.Remove(pflanze);
+        db.SaveChanges();
+        LadeDaten();
+        StatusSetzen("Pflanze wurde gelöscht.");
+    }
+
+    private async System.Threading.Tasks.Task RegelLoeschen()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst eine Pflanze auswählen.");
+            return;
+        }
+
+        if (RegelnDataGrid.SelectedItem is not RegelViewItem regel)
+        {
+            StatusSetzen("Bitte zuerst eine Regel auswählen.");
+            return;
+        }
+
+        var bestaetigt = await LoeschungBestaetigen(
+            $"Möchtest du die Regel \"{regel.Typ}\" wirklich löschen?");
+        if (!bestaetigt)
+        {
+            StatusSetzen("Löschen abgebrochen.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var entity = db.PflegeRegeln.FirstOrDefault(x => x.Id == regel.Id && x.PflanzeId == _ausgewaehltePflanze.Id);
+        if (entity is null)
+        {
+            StatusSetzen("Regel wurde nicht gefunden.");
+            return;
+        }
+
+        db.PflegeRegeln.Remove(entity);
+        db.SaveChanges();
+
+        LadeRegelnFuerAuswahl();
+        RegelTabZuruecksetzen();
+        StatusSetzen("Regel wurde gelöscht.");
+    }
+
+    private void OeffneRegelTab()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst in Übersicht eine Pflanze auswählen.");
+            MainTabs.SelectedIndex = 0;
+            return;
+        }
+
+        MainTabs.SelectedIndex = 2;
+    }
+
+    private void OeffneEintraegeTab()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst in Übersicht eine Pflanze auswählen.");
+            MainTabs.SelectedIndex = 0;
+            return;
+        }
+
+        MainTabs.SelectedIndex = 3;
+    }
+
+    private void PflanzeAusTabSpeichern()
+    {
+        var name = (TabNameBox.Text ?? string.Empty).Trim();
+        var art = (TabArtBox.Text ?? string.Empty).Trim();
+        var standort = (TabStandortBox.Text ?? string.Empty).Trim();
+        var notizen = (TabNotizenBox.Text ?? string.Empty).Trim();
+        var kaufdatum = TabKaufdatumPicker.SelectedDate;
+
+        var validierungsfehler = ValidierePflanze(name, art, standort, kaufdatum);
+        if (validierungsfehler is not null)
+        {
+            StatusSetzen(validierungsfehler);
+            return;
+        }
+
+        using var db = new AppDbContext();
+        if (IstNameStandortDuplikat(db.Pflanzen, name, standort))
+        {
+            StatusSetzen("Eine Pflanze mit diesem Namen und Standort existiert bereits.");
+            return;
+        }
+
+        db.Pflanzen.Add(new Pflanze
+        {
+            Name = name,
+            Art = art,
+            Standort = standort,
+            Kaufdatum = kaufdatum!.Value.DateTime.Date,
+            Notizen = notizen
+        });
+
+        try
+        {
+            db.SaveChanges();
+        }
+        catch (DbUpdateException ex)
+        {
+            StatusSetzen($"Speichern fehlgeschlagen: {ex.GetBaseException().Message}");
+            return;
+        }
+
+        PflanzeTabZuruecksetzen();
+        LadeDaten();
+        MainTabs.SelectedIndex = 0;
+        StatusSetzen("Pflanze gespeichert.");
+    }
+
+    private void PflanzeTabZuruecksetzen()
+    {
+        TabNameBox.Text = string.Empty;
+        TabArtBox.Text = string.Empty;
+        TabStandortBox.Text = string.Empty;
+        TabNotizenBox.Text = string.Empty;
+        TabKaufdatumPicker.SelectedDate = DateTimeOffset.Now;
+    }
+
+    private void LadeRegelInFormular()
+    {
+        if (RegelnDataGrid.SelectedItem is not RegelViewItem regel)
+        {
+            return;
+        }
+
+        _regelIdZumBearbeiten = regel.Id;
+        TabRegelTypComboBox.SelectedItem = regel.Typ;
+        TabRegelIntervallBox.Text = regel.Intervall.Replace(" Tage", string.Empty);
+        if (DateTime.TryParse(regel.Startdatum, out var parsed))
+        {
+            TabRegelStartdatumPicker.SelectedDate = new DateTimeOffset(parsed);
+        }
+    }
+
+    private void RegelAusTabSpeichern()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst in Übersicht eine Pflanze auswählen.");
+            return;
+        }
+
+        var typ = TabRegelTypComboBox.SelectedItem?.ToString()?.Trim() ?? string.Empty;
+        var intervallText = (TabRegelIntervallBox.Text ?? string.Empty).Trim();
+        var startdatum = TabRegelStartdatumPicker.SelectedDate;
+        if (string.IsNullOrWhiteSpace(typ) || !int.TryParse(intervallText, out var intervall) || intervall <= 0 || startdatum is null)
+        {
+            StatusSetzen("Regel ist unvollständig oder ungültig.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        PflegeRegel regel;
+        if (_regelIdZumBearbeiten is null)
+        {
+            regel = new PflegeRegel { PflanzeId = _ausgewaehltePflanze.Id };
+            db.PflegeRegeln.Add(regel);
+        }
+        else
+        {
+            regel = db.PflegeRegeln.FirstOrDefault(x => x.Id == _regelIdZumBearbeiten.Value && x.PflanzeId == _ausgewaehltePflanze.Id)
+                ?? new PflegeRegel { PflanzeId = _ausgewaehltePflanze.Id };
+            if (regel.Id == 0)
+            {
+                db.PflegeRegeln.Add(regel);
+            }
+        }
+
+        regel.Typ = typ;
+        regel.IntervallTage = intervall;
+        regel.Startdatum = startdatum.Value.DateTime.Date;
+        db.SaveChanges();
+
+        LadeRegelnFuerAuswahl();
+        RegelTabZuruecksetzen();
+        StatusSetzen("Regel gespeichert.");
+    }
+
+    private void RegelTabZuruecksetzen()
+    {
+        _regelIdZumBearbeiten = null;
+        TabRegelTypComboBox.SelectedIndex = 0;
+        TabRegelIntervallBox.Text = string.Empty;
+        TabRegelStartdatumPicker.SelectedDate = DateTimeOffset.Now;
+        RegelnDataGrid.SelectedItem = null;
+    }
+
+    private void LadeEintragInFormular()
+    {
+        if (TabEintraegeDataGrid.SelectedItem is not PflegeEintragViewItem eintrag)
+        {
+            return;
+        }
+
+        TabEintragTypComboBox.SelectedItem = eintrag.Typ;
+        if (DateTime.TryParse(eintrag.Datum, out var parsed))
+        {
+            TabEintragDatumPicker.SelectedDate = new DateTimeOffset(parsed);
+        }
+
+        TabEintragMengeBox.Text = eintrag.Menge;
+        TabEintragNotizBox.Text = eintrag.Notiz;
+    }
+
+    private void EintragAusTabHinzufuegen()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst in Übersicht eine Pflanze auswählen.");
+            return;
+        }
+
+        var typ = TabEintragTypComboBox.SelectedItem?.ToString()?.Trim() ?? string.Empty;
+        var datum = TabEintragDatumPicker.SelectedDate;
+        if (string.IsNullOrWhiteSpace(typ) || datum is null)
+        {
+            StatusSetzen("Eintrag ist unvollständig.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        db.PflegeEintraege.Add(new PflegeEintrag
+        {
+            PflanzeId = _ausgewaehltePflanze.Id,
+            Typ = typ,
+            Datum = datum.Value.DateTime.Date,
+            Menge = (TabEintragMengeBox.Text ?? string.Empty).Trim(),
+            Notiz = (TabEintragNotizBox.Text ?? string.Empty).Trim()
+        });
+        db.SaveChanges();
+
+        LadeEintraegeFuerAuswahl();
+        EintragTabZuruecksetzen();
+        StatusSetzen("Eintrag hinzugefügt.");
+    }
+
+    private void EintragAusTabAendern()
+    {
+        if (_ausgewaehltePflanze is null || TabEintraegeDataGrid.SelectedItem is not PflegeEintragViewItem eintrag)
+        {
+            StatusSetzen("Bitte zuerst einen Eintrag auswählen.");
+            return;
+        }
+
+        var typ = TabEintragTypComboBox.SelectedItem?.ToString()?.Trim() ?? string.Empty;
+        var datum = TabEintragDatumPicker.SelectedDate;
+        if (string.IsNullOrWhiteSpace(typ) || datum is null)
+        {
+            StatusSetzen("Eintrag ist unvollständig.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var entity = db.PflegeEintraege.FirstOrDefault(x => x.Id == eintrag.Id && x.PflanzeId == _ausgewaehltePflanze.Id);
+        if (entity is null)
+        {
+            StatusSetzen("Eintrag wurde nicht gefunden.");
+            return;
+        }
+
+        entity.Typ = typ;
+        entity.Datum = datum.Value.DateTime.Date;
+        entity.Menge = (TabEintragMengeBox.Text ?? string.Empty).Trim();
+        entity.Notiz = (TabEintragNotizBox.Text ?? string.Empty).Trim();
+        db.SaveChanges();
+
+        LadeEintraegeFuerAuswahl();
+        StatusSetzen("Eintrag aktualisiert.");
+    }
+
+    private async System.Threading.Tasks.Task EintragAusTabLoeschen()
+    {
+        if (_ausgewaehltePflanze is null || TabEintraegeDataGrid.SelectedItem is not PflegeEintragViewItem eintrag)
+        {
+            StatusSetzen("Bitte zuerst einen Eintrag auswählen.");
+            return;
+        }
+
+        var bestaetigt = await LoeschungBestaetigen(
+            $"Möchtest du den Eintrag vom {eintrag.Datum} ({eintrag.Typ}) wirklich löschen?");
+        if (!bestaetigt)
+        {
+            StatusSetzen("Löschen abgebrochen.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var entity = db.PflegeEintraege.FirstOrDefault(x => x.Id == eintrag.Id && x.PflanzeId == _ausgewaehltePflanze.Id);
+        if (entity is null)
+        {
+            StatusSetzen("Eintrag wurde nicht gefunden.");
+            return;
+        }
+
+        db.PflegeEintraege.Remove(entity);
+        db.SaveChanges();
+        LadeEintraegeFuerAuswahl();
+        EintragTabZuruecksetzen();
+        StatusSetzen("Eintrag gelöscht.");
+    }
+
+    private void EintragTabZuruecksetzen()
+    {
+        TabEintragTypComboBox.SelectedIndex = 0;
+        TabEintragDatumPicker.SelectedDate = DateTimeOffset.Now;
+        TabEintragMengeBox.Text = string.Empty;
+        TabEintragNotizBox.Text = string.Empty;
+    }
+
+    private void StatusSetzen(string text)
+    {
+        StatusText.Text = text;
+    }
+
+    private static string? ValidierePflanze(string name, string art, string standort, DateTimeOffset? kaufdatum)
+    {
+        if (string.IsNullOrWhiteSpace(name) ||
+            string.IsNullOrWhiteSpace(art) ||
+            string.IsNullOrWhiteSpace(standort) ||
+            kaufdatum is null)
+        {
+            return "Bitte alle Pflichtfelder für Pflanze ausfüllen.";
+        }
+
+        return null;
+    }
+
+    private static bool IstNameStandortDuplikat(IEnumerable<Pflanze> pflanzen, string name, string standort)
+    {
+        return pflanzen.Any(p => p.Name == name && p.Standort == standort);
+    }
+
+    private async System.Threading.Tasks.Task<bool> LoeschungBestaetigen(string text)
+    {
+        var dialog = new Window
+        {
+            Width = 460,
+            Height = 180,
+            Title = "Löschen bestätigen",
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false
+        };
+
+        var message = new TextBlock
+        {
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+
+        var jaButton = new Button
+        {
+            Content = "Ja, löschen",
+            Width = 120,
+            Height = 36
+        };
+        var neinButton = new Button
+        {
+            Content = "Abbrechen",
+            Width = 120,
+            Height = 36
+        };
+
+        jaButton.Click += (_, _) => dialog.Close(true);
+        neinButton.Click += (_, _) => dialog.Close(false);
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Spacing = 8,
+            Children =
+            {
+                message,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Spacing = 10,
+                    Children = { neinButton, jaButton }
+                }
+            }
+        };
+
+        var result = await dialog.ShowDialog<bool>(this);
+        return result;
     }
 }
