@@ -1,19 +1,30 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
-namespace PflanzenpflegeAvalonia.Models
+namespace PflanzenpflegeAvalonia.Models;
+
+public class Pflanze
 {
-    public class Pflanze
-    {
-        public int Id { get; set; }
+    public int Id { get; set; }
 
-        public string Name { get; set; } = "";
+    [Required]
+    [MaxLength(100)]
+    public string Name { get; set; } = string.Empty;
 
-        public string Art { get; set; } = "";
+    [Required]
+    [MaxLength(100)]
+    public string Art { get; set; } = string.Empty;
 
-        public string Standort { get; set; } = "";
+    [Required]
+    [MaxLength(100)]
+    public string Standort { get; set; } = string.Empty;
 
-        public DateTime Kaufdatum { get; set; }
+    public DateTime Kaufdatum { get; set; }
 
-        public string Notizen { get; set; } = "";
-    }
+    [MaxLength(500)]
+    public string Notizen { get; set; } = string.Empty;
+
+    public List<PflegeRegel> Regeln { get; set; } = new();
+    public List<PflegeEintrag> Eintraege { get; set; } = new();
 }
