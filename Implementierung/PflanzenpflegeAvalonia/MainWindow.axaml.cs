@@ -56,6 +56,13 @@ public partial class MainWindow : Window
         MenuBeenden.Click += (_, _) => Close();
         MenuAktualisieren.Click += (_, _) => LadeDaten();
 
+        SucheButton.Click += (_, _) => LadeDaten();
+        SucheZuruecksetzenButton.Click += (_, _) =>
+        {
+            SuchTextBox.Text = string.Empty;
+            LadeDaten();
+        };
+
         TabPflanzeSpeichernButton.Click += (_, _) => PflanzeAusTabSpeichern();
         TabPflanzeZuruecksetzenButton.Click += (_, _) => PflanzeTabZuruecksetzen();
         TabRegelSpeichernButton.Click += (_, _) => RegelAusTabSpeichern();
@@ -74,8 +81,22 @@ public partial class MainWindow : Window
         _pflanzen.Clear();
 
         using var db = new AppDbContext();
-        var pflanzen = db.Pflanzen
+        var suche = (SuchTextBox.Text ?? string.Empty).Trim();
+
+        var query = db.Pflanzen
             .Include(x => x.Regeln)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(suche))
+        {
+            var sucheKlein = suche.ToLower();
+            query = query.Where(p =>
+                p.Name.ToLower().Contains(sucheKlein) ||
+                p.Art.ToLower().Contains(sucheKlein) ||
+                p.Standort.ToLower().Contains(sucheKlein));
+        }
+
+        var pflanzen = query
             .OrderBy(x => x.Name)
             .ToList();
 
@@ -102,7 +123,14 @@ public partial class MainWindow : Window
         NaechstePflegeText.Text = "-";
         TabRegelNameText.Text = "Bitte in Übersicht eine Pflanze wählen";
         TabEintraegeNameText.Text = "Bitte in Übersicht eine Pflanze wählen";
-        StatusSetzen($"Übersicht aktualisiert ({_pflanzen.Count} Pflanzen).");
+        if (string.IsNullOrWhiteSpace(suche))
+        {
+            StatusSetzen($"Übersicht aktualisiert ({_pflanzen.Count} Pflanzen).");
+        }
+        else
+        {
+            StatusSetzen($"Suche \"{suche}\": {_pflanzen.Count} Treffer.");
+        }
     }
 
     private void PflanzeAusgewaehlt()
