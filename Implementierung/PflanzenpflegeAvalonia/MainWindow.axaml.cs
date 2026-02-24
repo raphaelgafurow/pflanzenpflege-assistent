@@ -654,6 +654,7 @@ public partial class MainWindow : Window
         TabEintragDatumPicker.SelectedDate = DateTimeOffset.Now;
         TabEintragMengeBox.Text = string.Empty;
         TabEintragNotizBox.Text = string.Empty;
+        TabEintraegeDataGrid.SelectedItem = null;
     }
 
     private void StatusSetzen(string text)
