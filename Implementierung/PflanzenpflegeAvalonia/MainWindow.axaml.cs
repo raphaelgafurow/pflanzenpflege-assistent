@@ -368,27 +368,34 @@ public partial class MainWindow : Window
             return;
         }
 
-        using var db = new AppDbContext();
-        var regeln = db.PflegeRegeln
-            .Where(r => r.PflanzeId == _ausgewaehltePflanze.Id && r.IntervallTage > 0)
-            .ToList();
-
-        if (regeln.Count == 0)
+        if (RegelnDataGrid.SelectedItem is not RegelViewItem ausgewaehlteRegel)
         {
-            StatusSetzen("Für diese Pflanze gibt es keine gültige Pflege-Regel.");
+            StatusSetzen("Bitte unten zuerst eine Regel auswählen und dann Pflege bestätigen.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var regel = db.PflegeRegeln.FirstOrDefault(r =>
+            r.Id == ausgewaehlteRegel.Id &&
+            r.PflanzeId == _ausgewaehltePflanze.Id &&
+            r.IntervallTage > 0);
+        if (regel is null)
+        {
+            StatusSetzen("Die ausgewählte Regel ist ungültig oder wurde nicht gefunden.");
             return;
         }
 
         var heute = DateTime.Today;
-        var naechsteRegel = regeln
-            .Select(r => new { Regel = r, Datum = BerechneNaechstesDatum(r, heute) })
-            .OrderBy(x => x.Datum)
-            .ThenBy(x => x.Regel.Typ)
-            .First();
+        var (faelligkeit, status) = BerechneFaelligkeit(regel, heute);
+        if (status == PflegeStatusDemnaechst)
+        {
+            StatusSetzen($"Die ausgewählte Regel ist erst am {faelligkeit:dd.MM.yyyy} fällig.");
+            return;
+        }
 
         var bestaetigt = await BestaetigungsDialog(
             "Pflege bestätigen",
-            $"Pflege \"{naechsteRegel.Regel.Typ}\" für \"{_ausgewaehltePflanze.Name}\" am {heute:dd.MM.yyyy} als erledigt bestätigen?",
+            $"Pflege \"{regel.Typ}\" für \"{_ausgewaehltePflanze.Name}\" am {heute:dd.MM.yyyy} als erledigt bestätigen? (Fällig seit {faelligkeit:dd.MM.yyyy})",
             "Ja, bestätigen");
         if (!bestaetigt)
         {
@@ -399,13 +406,13 @@ public partial class MainWindow : Window
         db.PflegeEintraege.Add(new PflegeEintrag
         {
             PflanzeId = _ausgewaehltePflanze.Id,
-            Typ = naechsteRegel.Regel.Typ,
+            Typ = regel.Typ,
             Datum = heute,
             Menge = string.Empty,
             Notiz = "Als erledigt bestätigt"
         });
 
-        naechsteRegel.Regel.Startdatum = heute.AddDays(naechsteRegel.Regel.IntervallTage);
+        regel.Startdatum = heute.AddDays(regel.IntervallTage);
         db.SaveChanges();
 
         var pflanzeId = _ausgewaehltePflanze.Id;
@@ -416,7 +423,7 @@ public partial class MainWindow : Window
             PflanzenDataGrid.SelectedItem = erneutAuswaehlen;
         }
 
-        StatusSetzen($"Pflege bestätigt: {naechsteRegel.Regel.Typ}. Nächste Fälligkeit wurde verschoben.");
+        StatusSetzen($"Pflege bestätigt: {regel.Typ}. Nächste Fälligkeit wurde verschoben.");
     }
 
     private void OeffneRegelTab()
