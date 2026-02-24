@@ -61,6 +61,7 @@
                                     <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" />
                                     <DataGridTextColumn Header="Art" Binding="{Binding Art}" Width="*" />
                                     <DataGridTextColumn Header="Standort" Binding="{Binding Standort}" Width="*" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding PflegeStatus}" Width="*" />
                                     <DataGridTextColumn Header="Nächste Pflege" Binding="{Binding NaechstePflege}" Width="*" />
                                 </DataGrid.Columns>
                             </DataGrid>

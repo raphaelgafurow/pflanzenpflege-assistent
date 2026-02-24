@@ -14,6 +14,10 @@ namespace PflanzenpflegeAvalonia;
 
 public partial class MainWindow : Window
 {
+    private const string PflegeStatusUeberfaellig = "Überfällig";
+    private const string PflegeStatusHeute = "Heute fällig";
+    private const string PflegeStatusDemnaechst = "Demnächst fällig";
+
     private readonly ObservableCollection<PflanzenUebersichtItem> _pflanzen = new();
     private readonly ObservableCollection<RegelViewItem> _regeln = new();
     private readonly ObservableCollection<PflegeEintragViewItem> _eintraege = new();
@@ -104,8 +108,8 @@ public partial class MainWindow : Window
 
         foreach (var p in pflanzen)
         {
-            var (date, typ) = BerechneNaechstePflege(p.Regeln);
-            var nextText = date is null ? "-" : $"{date:dd.MM.yyyy} ({typ})";
+            var status = ErmittlePflegeStatus(p.Regeln);
+            var nextText = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy} ({status.Typ})";
 
             _pflanzen.Add(new PflanzenUebersichtItem
             {
@@ -113,6 +117,7 @@ public partial class MainWindow : Window
                 Name = p.Name,
                 Art = p.Art,
                 Standort = p.Standort,
+                PflegeStatus = status.Status,
                 NaechstePflege = nextText
             });
         }
@@ -181,37 +186,37 @@ public partial class MainWindow : Window
             });
         }
 
-        var (date, typ) = BerechneNaechstePflege(regeln);
-        NaechstePflegeText.Text = date is null ? "-" : $"{date:dd.MM.yyyy}\n{typ}";
+        var status = ErmittlePflegeStatus(regeln);
+        NaechstePflegeText.Text = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy}\n{status.Typ}\n{status.Status}";
     }
 
-    private static (DateTime? Date, string Typ) BerechneNaechstePflege(IEnumerable<PflegeRegel> regeln)
+    private static (DateTime? Date, string Typ, string Status) ErmittlePflegeStatus(IEnumerable<PflegeRegel> regeln)
     {
-        DateTime? bestDate = null;
-        var bestTyp = string.Empty;
         var heute = DateTime.Today;
+        var kandidaten = regeln
+            .Where(r => r.IntervallTage > 0)
+            .Select(r =>
+            {
+                var (faelligkeit, status) = BerechneFaelligkeit(r, heute);
+                return new
+                {
+                    Regel = r,
+                    Faelligkeit = faelligkeit,
+                    Status = status
+                };
+            })
+            .OrderBy(x => StatusPrioritaet(x.Status))
+            .ThenBy(x => x.Faelligkeit)
+            .ThenBy(x => x.Regel.Typ)
+            .ToList();
 
-        foreach (var regel in regeln)
+        if (kandidaten.Count == 0)
         {
-            if (regel.IntervallTage <= 0)
-            {
-                continue;
-            }
-
-            var naechste = regel.Startdatum.Date;
-            while (naechste < heute)
-            {
-                naechste = naechste.AddDays(regel.IntervallTage);
-            }
-
-            if (bestDate is null || naechste < bestDate)
-            {
-                bestDate = naechste;
-                bestTyp = regel.Typ;
-            }
+            return (null, string.Empty, "-");
         }
 
-        return (bestDate, bestTyp);
+        var best = kandidaten[0];
+        return (best.Faelligkeit, best.Regel.Typ, best.Status);
     }
 
     private static DateTime BerechneNaechstesDatum(PflegeRegel regel, DateTime heute)
@@ -223,6 +228,37 @@ public partial class MainWindow : Window
         }
 
         return naechste;
+    }
+
+    private static (DateTime Faelligkeit, string Status) BerechneFaelligkeit(PflegeRegel regel, DateTime heute)
+    {
+        var start = regel.Startdatum.Date;
+        if (start > heute)
+        {
+            return (start, PflegeStatusDemnaechst);
+        }
+
+        var tageSeitStart = (heute - start).Days;
+        var rest = tageSeitStart % regel.IntervallTage;
+        var letzteFaelligkeit = heute.AddDays(-rest);
+
+        if (rest == 0)
+        {
+            return (heute, PflegeStatusHeute);
+        }
+
+        return (letzteFaelligkeit, PflegeStatusUeberfaellig);
+    }
+
+    private static int StatusPrioritaet(string status)
+    {
+        return status switch
+        {
+            PflegeStatusUeberfaellig => 0,
+            PflegeStatusHeute => 1,
+            PflegeStatusDemnaechst => 2,
+            _ => 3
+        };
     }
 
     private void LadeEintraegeFuerAuswahl()
