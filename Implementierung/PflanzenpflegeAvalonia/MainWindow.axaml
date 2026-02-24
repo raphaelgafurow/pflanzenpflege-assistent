@@ -15,6 +15,7 @@
             <MenuItem Header="_Datei">
                 <MenuItem Header="Übersicht" x:Name="MenuUebersicht" />
                 <MenuItem Header="Pflanze anlegen" x:Name="MenuPflanzeAnlegen" />
+                <MenuItem Header="Pflanze bearbeiten" x:Name="MenuPflanzeBearbeiten" />
                 <MenuItem Header="Pflanze löschen" x:Name="MenuPflanzeLoeschen" />
                 <MenuItem Header="Regel ändern/hinzufügen" x:Name="MenuRegelBearbeiten" />
                 <MenuItem Header="Einträge ändern/hinzufügen" x:Name="MenuEintraege" />
@@ -68,6 +69,7 @@
 
                             <StackPanel Grid.Column="1" Spacing="12" VerticalAlignment="Top">
                                 <Button x:Name="BtnPflanzeAnlegen" Content="Pflanze anlegen" />
+                                <Button x:Name="BtnPflanzeBearbeiten" Content="Pflanze bearbeiten" />
                                 <Button x:Name="BtnPflanzeLoeschen" Content="Pflanze löschen" />
                                 <Button x:Name="BtnRegelBearbeiten" Content="Regel ändern/hinzufügen" />
                                 <Button x:Name="BtnEintraegeBearbeiten" Content="Einträge ändern/hinzufügen" />
