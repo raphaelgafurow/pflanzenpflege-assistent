@@ -18,6 +18,7 @@
                 <MenuItem Header="Pflanze löschen" x:Name="MenuPflanzeLoeschen" />
                 <MenuItem Header="Regel ändern/hinzufügen" x:Name="MenuRegelBearbeiten" />
                 <MenuItem Header="Einträge ändern/hinzufügen" x:Name="MenuEintraege" />
+                <MenuItem Header="Pflege bestätigen" x:Name="MenuPflegeBestaetigen" />
                 <Separator />
                 <MenuItem Header="Beenden" x:Name="MenuBeenden" />
             </MenuItem>
@@ -69,6 +70,7 @@
                                 <Button x:Name="BtnPflanzeLoeschen" Content="Pflanze löschen" />
                                 <Button x:Name="BtnRegelBearbeiten" Content="Regel ändern/hinzufügen" />
                                 <Button x:Name="BtnEintraegeBearbeiten" Content="Einträge ändern/hinzufügen" />
+                                <Button x:Name="BtnPflegeBestaetigen" Content="Pflege bestätigen" />
                                 <Button x:Name="BtnBeenden" Content="Beenden" />
                             </StackPanel>
                         </Grid>
