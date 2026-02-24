@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<RegelViewItem> _regeln = new();
     private readonly ObservableCollection<PflegeEintragViewItem> _eintraege = new();
     private PflanzenUebersichtItem? _ausgewaehltePflanze;
+    private int? _pflanzeIdZumBearbeiten;
     private int? _regelIdZumBearbeiten;
 
     public MainWindow()
@@ -45,7 +46,8 @@ public partial class MainWindow : Window
         RegelnDataGrid.SelectionChanged += (_, _) => LadeRegelInFormular();
         TabEintraegeDataGrid.SelectionChanged += (_, _) => LadeEintragInFormular();
 
-        BtnPflanzeAnlegen.Click += (_, _) => MainTabs.SelectedIndex = 1;
+        BtnPflanzeAnlegen.Click += (_, _) => OeffnePflanzeTabNeu();
+        BtnPflanzeBearbeiten.Click += (_, _) => OeffnePflanzeTabBearbeiten();
         BtnPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
         BtnRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
         BtnEintraegeBearbeiten.Click += (_, _) => OeffneEintraegeTab();
@@ -54,7 +56,8 @@ public partial class MainWindow : Window
         BtnRegelLoeschen.Click += async (_, _) => await RegelLoeschen();
 
         MenuUebersicht.Click += (_, _) => MainTabs.SelectedIndex = 0;
-        MenuPflanzeAnlegen.Click += (_, _) => MainTabs.SelectedIndex = 1;
+        MenuPflanzeAnlegen.Click += (_, _) => OeffnePflanzeTabNeu();
+        MenuPflanzeBearbeiten.Click += (_, _) => OeffnePflanzeTabBearbeiten();
         MenuPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
         MenuRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
         MenuEintraege.Click += (_, _) => OeffneEintraegeTab();
@@ -124,6 +127,7 @@ public partial class MainWindow : Window
         }
 
         _ausgewaehltePflanze = null;
+        _pflanzeIdZumBearbeiten = null;
         _regelIdZumBearbeiten = null;
         _regeln.Clear();
         _eintraege.Clear();
@@ -488,6 +492,39 @@ public partial class MainWindow : Window
         MainTabs.SelectedIndex = 3;
     }
 
+    private void OeffnePflanzeTabNeu()
+    {
+        _pflanzeIdZumBearbeiten = null;
+        PflanzeTabZuruecksetzen();
+        MainTabs.SelectedIndex = 1;
+    }
+
+    private void OeffnePflanzeTabBearbeiten()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst in Übersicht eine Pflanze auswählen.");
+            MainTabs.SelectedIndex = 0;
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var pflanze = db.Pflanzen.FirstOrDefault(x => x.Id == _ausgewaehltePflanze.Id);
+        if (pflanze is null)
+        {
+            StatusSetzen("Pflanze wurde nicht gefunden.");
+            return;
+        }
+
+        _pflanzeIdZumBearbeiten = pflanze.Id;
+        TabNameBox.Text = pflanze.Name;
+        TabArtBox.Text = pflanze.Art;
+        TabStandortBox.Text = pflanze.Standort;
+        TabNotizenBox.Text = pflanze.Notizen;
+        TabKaufdatumPicker.SelectedDate = new DateTimeOffset(pflanze.Kaufdatum);
+        MainTabs.SelectedIndex = 1;
+    }
+
     private void PflanzeAusTabSpeichern()
     {
         var name = (TabNameBox.Text ?? string.Empty).Trim();
@@ -504,24 +541,48 @@ public partial class MainWindow : Window
         }
 
         using var db = new AppDbContext();
-        if (IstNameStandortDuplikat(db.Pflanzen, name, standort))
+        Pflanze pflanze;
+        if (_pflanzeIdZumBearbeiten is null)
         {
-            StatusSetzen("Eine Pflanze mit diesem Namen und Standort existiert bereits.");
-            return;
+            if (IstNameStandortDuplikat(db.Pflanzen, name, standort))
+            {
+                StatusSetzen("Eine Pflanze mit diesem Namen und Standort existiert bereits.");
+                return;
+            }
+
+            pflanze = new Pflanze();
+            db.Pflanzen.Add(pflanze);
+        }
+        else
+        {
+            pflanze = db.Pflanzen.FirstOrDefault(x => x.Id == _pflanzeIdZumBearbeiten.Value)
+                ?? new Pflanze();
+            if (pflanze.Id == 0)
+            {
+                StatusSetzen("Pflanze wurde nicht gefunden.");
+                return;
+            }
+
+            if (IstNameStandortDuplikat(db.Pflanzen, name, standort, pflanze.Id))
+            {
+                StatusSetzen("Eine andere Pflanze mit diesem Namen und Standort existiert bereits.");
+                return;
+            }
         }
 
-        db.Pflanzen.Add(new Pflanze
-        {
-            Name = name,
-            Art = art,
-            Standort = standort,
-            Kaufdatum = kaufdatum!.Value.DateTime.Date,
-            Notizen = notizen
-        });
+        pflanze.Name = name;
+        pflanze.Art = art;
+        pflanze.Standort = standort;
+        pflanze.Kaufdatum = kaufdatum!.Value.DateTime.Date;
+        pflanze.Notizen = notizen;
+
+        var warBearbeiten = _pflanzeIdZumBearbeiten.HasValue;
+        var gespeichertePflanzeId = pflanze.Id;
 
         try
         {
             db.SaveChanges();
+            gespeichertePflanzeId = pflanze.Id;
         }
         catch (DbUpdateException ex)
         {
@@ -531,12 +592,20 @@ public partial class MainWindow : Window
 
         PflanzeTabZuruecksetzen();
         LadeDaten();
+        var erneutAuswaehlen = _pflanzen.FirstOrDefault(x => x.Id == gespeichertePflanzeId);
+        if (erneutAuswaehlen is not null)
+        {
+            PflanzenDataGrid.SelectedItem = erneutAuswaehlen;
+        }
+
+        var statusText = warBearbeiten ? "Pflanze aktualisiert." : "Pflanze gespeichert.";
         MainTabs.SelectedIndex = 0;
-        StatusSetzen("Pflanze gespeichert.");
+        StatusSetzen(statusText);
     }
 
     private void PflanzeTabZuruecksetzen()
     {
+        _pflanzeIdZumBearbeiten = null;
         TabNameBox.Text = string.Empty;
         TabArtBox.Text = string.Empty;
         TabStandortBox.Text = string.Empty;
@@ -756,9 +825,12 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static bool IstNameStandortDuplikat(IEnumerable<Pflanze> pflanzen, string name, string standort)
+    private static bool IstNameStandortDuplikat(IEnumerable<Pflanze> pflanzen, string name, string standort, int? ausnahmeId = null)
     {
-        return pflanzen.Any(p => p.Name == name && p.Standort == standort);
+        return pflanzen.Any(p =>
+            p.Name == name &&
+            p.Standort == standort &&
+            (!ausnahmeId.HasValue || p.Id != ausnahmeId.Value));
     }
 
     private async System.Threading.Tasks.Task<bool> BestaetigungsDialog(string titel, string text, string bestaetigenText)
