@@ -91,6 +91,7 @@ public partial class MainWindow : Window
 
         var query = db.Pflanzen
             .Include(x => x.Regeln)
+            .Include(x => x.Eintraege)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(suche))
@@ -108,7 +109,7 @@ public partial class MainWindow : Window
 
         foreach (var p in pflanzen)
         {
-            var status = ErmittlePflegeStatus(p.Regeln);
+            var status = ErmittlePflegeStatus(p.Regeln, p.Eintraege);
             var nextText = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy} ({status.Typ})";
 
             _pflanzen.Add(new PflanzenUebersichtItem
@@ -174,6 +175,9 @@ public partial class MainWindow : Window
             .Where(r => r.PflanzeId == _ausgewaehltePflanze.Id)
             .OrderBy(r => r.Typ)
             .ToList();
+        var eintraege = db.PflegeEintraege
+            .Where(e => e.PflanzeId == _ausgewaehltePflanze.Id)
+            .ToList();
 
         foreach (var regel in regeln)
         {
@@ -186,18 +190,29 @@ public partial class MainWindow : Window
             });
         }
 
-        var status = ErmittlePflegeStatus(regeln);
+        var status = ErmittlePflegeStatus(regeln, eintraege);
         NaechstePflegeText.Text = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy}\n{status.Typ}\n{status.Status}";
     }
 
-    private static (DateTime? Date, string Typ, string Status) ErmittlePflegeStatus(IEnumerable<PflegeRegel> regeln)
+    private static (DateTime? Date, string Typ, string Status) ErmittlePflegeStatus(
+        IEnumerable<PflegeRegel> regeln,
+        IEnumerable<PflegeEintrag> eintraege)
     {
         var heute = DateTime.Today;
+        var letzteEintraegeNachTyp = eintraege
+            .GroupBy(e => e.Typ)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Max(x => x.Datum.Date));
+
         var kandidaten = regeln
             .Where(r => r.IntervallTage > 0)
             .Select(r =>
             {
-                var (faelligkeit, status) = BerechneFaelligkeit(r, heute);
+                var letztePflege = letzteEintraegeNachTyp.TryGetValue(r.Typ, out var datum)
+                    ? datum
+                    : (DateTime?)null;
+                var (faelligkeit, status) = BerechneFaelligkeit(r, letztePflege, heute);
                 return new
                 {
                     Regel = r,
@@ -230,8 +245,27 @@ public partial class MainWindow : Window
         return naechste;
     }
 
-    private static (DateTime Faelligkeit, string Status) BerechneFaelligkeit(PflegeRegel regel, DateTime heute)
+    private static (DateTime Faelligkeit, string Status) BerechneFaelligkeit(
+        PflegeRegel regel,
+        DateTime? letztePflege,
+        DateTime heute)
     {
+        if (letztePflege is not null)
+        {
+            var naechsteNachPflege = letztePflege.Value.Date.AddDays(regel.IntervallTage);
+            if (naechsteNachPflege > heute)
+            {
+                return (naechsteNachPflege, PflegeStatusDemnaechst);
+            }
+
+            if (naechsteNachPflege == heute)
+            {
+                return (naechsteNachPflege, PflegeStatusHeute);
+            }
+
+            return (naechsteNachPflege, PflegeStatusUeberfaellig);
+        }
+
         var start = regel.Startdatum.Date;
         if (start > heute)
         {
@@ -386,7 +420,12 @@ public partial class MainWindow : Window
         }
 
         var heute = DateTime.Today;
-        var (faelligkeit, status) = BerechneFaelligkeit(regel, heute);
+        var letztePflege = db.PflegeEintraege
+            .Where(e => e.PflanzeId == _ausgewaehltePflanze.Id && e.Typ == regel.Typ)
+            .OrderByDescending(e => e.Datum)
+            .Select(e => (DateTime?)e.Datum)
+            .FirstOrDefault();
+        var (faelligkeit, status) = BerechneFaelligkeit(regel, letztePflege, heute);
         if (status == PflegeStatusDemnaechst)
         {
             StatusSetzen($"Die ausgewählte Regel ist erst am {faelligkeit:dd.MM.yyyy} fällig.");
@@ -412,7 +451,6 @@ public partial class MainWindow : Window
             Notiz = "Als erledigt bestätigt"
         });
 
-        regel.Startdatum = heute.AddDays(regel.IntervallTage);
         db.SaveChanges();
 
         var pflanzeId = _ausgewaehltePflanze.Id;
