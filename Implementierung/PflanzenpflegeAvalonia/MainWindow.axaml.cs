@@ -45,6 +45,7 @@ public partial class MainWindow : Window
         BtnPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
         BtnRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
         BtnEintraegeBearbeiten.Click += (_, _) => OeffneEintraegeTab();
+        BtnPflegeBestaetigen.Click += async (_, _) => await PflegeBestaetigen();
         BtnBeenden.Click += (_, _) => Close();
         BtnRegelLoeschen.Click += async (_, _) => await RegelLoeschen();
 
@@ -53,6 +54,7 @@ public partial class MainWindow : Window
         MenuPflanzeLoeschen.Click += async (_, _) => await PflanzeLoeschen();
         MenuRegelBearbeiten.Click += (_, _) => OeffneRegelTab();
         MenuEintraege.Click += (_, _) => OeffneEintraegeTab();
+        MenuPflegeBestaetigen.Click += async (_, _) => await PflegeBestaetigen();
         MenuBeenden.Click += (_, _) => Close();
         MenuAktualisieren.Click += (_, _) => LadeDaten();
 
@@ -212,6 +214,17 @@ public partial class MainWindow : Window
         return (bestDate, bestTyp);
     }
 
+    private static DateTime BerechneNaechstesDatum(PflegeRegel regel, DateTime heute)
+    {
+        var naechste = regel.Startdatum.Date;
+        while (naechste < heute)
+        {
+            naechste = naechste.AddDays(regel.IntervallTage);
+        }
+
+        return naechste;
+    }
+
     private void LadeEintraegeFuerAuswahl()
     {
         _eintraege.Clear();
@@ -247,8 +260,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var bestaetigt = await LoeschungBestaetigen(
-            $"Möchtest du die Pflanze \"{_ausgewaehltePflanze.Name}\" wirklich löschen?");
+        var bestaetigt = await BestaetigungsDialog(
+            "Löschen bestätigen",
+            $"Möchtest du die Pflanze \"{_ausgewaehltePflanze.Name}\" wirklich löschen?",
+            "Ja, löschen");
         if (!bestaetigt)
         {
             StatusSetzen("Löschen abgebrochen.");
@@ -283,8 +298,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var bestaetigt = await LoeschungBestaetigen(
-            $"Möchtest du die Regel \"{regel.Typ}\" wirklich löschen?");
+        var bestaetigt = await BestaetigungsDialog(
+            "Löschen bestätigen",
+            $"Möchtest du die Regel \"{regel.Typ}\" wirklich löschen?",
+            "Ja, löschen");
         if (!bestaetigt)
         {
             StatusSetzen("Löschen abgebrochen.");
@@ -305,6 +322,65 @@ public partial class MainWindow : Window
         LadeRegelnFuerAuswahl();
         RegelTabZuruecksetzen();
         StatusSetzen("Regel wurde gelöscht.");
+    }
+
+    private async System.Threading.Tasks.Task PflegeBestaetigen()
+    {
+        if (_ausgewaehltePflanze is null)
+        {
+            StatusSetzen("Bitte zuerst eine Pflanze auswählen.");
+            return;
+        }
+
+        using var db = new AppDbContext();
+        var regeln = db.PflegeRegeln
+            .Where(r => r.PflanzeId == _ausgewaehltePflanze.Id && r.IntervallTage > 0)
+            .ToList();
+
+        if (regeln.Count == 0)
+        {
+            StatusSetzen("Für diese Pflanze gibt es keine gültige Pflege-Regel.");
+            return;
+        }
+
+        var heute = DateTime.Today;
+        var naechsteRegel = regeln
+            .Select(r => new { Regel = r, Datum = BerechneNaechstesDatum(r, heute) })
+            .OrderBy(x => x.Datum)
+            .ThenBy(x => x.Regel.Typ)
+            .First();
+
+        var bestaetigt = await BestaetigungsDialog(
+            "Pflege bestätigen",
+            $"Pflege \"{naechsteRegel.Regel.Typ}\" für \"{_ausgewaehltePflanze.Name}\" am {heute:dd.MM.yyyy} als erledigt bestätigen?",
+            "Ja, bestätigen");
+        if (!bestaetigt)
+        {
+            StatusSetzen("Bestätigung abgebrochen.");
+            return;
+        }
+
+        db.PflegeEintraege.Add(new PflegeEintrag
+        {
+            PflanzeId = _ausgewaehltePflanze.Id,
+            Typ = naechsteRegel.Regel.Typ,
+            Datum = heute,
+            Menge = string.Empty,
+            Notiz = "Als erledigt bestätigt"
+        });
+
+        naechsteRegel.Regel.Startdatum = heute.AddDays(naechsteRegel.Regel.IntervallTage);
+        db.SaveChanges();
+
+        var pflanzeId = _ausgewaehltePflanze.Id;
+        LadeDaten();
+        var erneutAuswaehlen = _pflanzen.FirstOrDefault(x => x.Id == pflanzeId);
+        if (erneutAuswaehlen is not null)
+        {
+            PflanzenDataGrid.SelectedItem = erneutAuswaehlen;
+        }
+
+        StatusSetzen($"Pflege bestätigt: {naechsteRegel.Regel.Typ}. Nächste Fälligkeit wurde verschoben.");
     }
 
     private void OeffneRegelTab()
@@ -547,8 +623,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var bestaetigt = await LoeschungBestaetigen(
-            $"Möchtest du den Eintrag vom {eintrag.Datum} ({eintrag.Typ}) wirklich löschen?");
+        var bestaetigt = await BestaetigungsDialog(
+            "Löschen bestätigen",
+            $"Möchtest du den Eintrag vom {eintrag.Datum} ({eintrag.Typ}) wirklich löschen?",
+            "Ja, löschen");
         if (!bestaetigt)
         {
             StatusSetzen("Löschen abgebrochen.");
@@ -601,13 +679,13 @@ public partial class MainWindow : Window
         return pflanzen.Any(p => p.Name == name && p.Standort == standort);
     }
 
-    private async System.Threading.Tasks.Task<bool> LoeschungBestaetigen(string text)
+    private async System.Threading.Tasks.Task<bool> BestaetigungsDialog(string titel, string text, string bestaetigenText)
     {
         var dialog = new Window
         {
             Width = 460,
             Height = 180,
-            Title = "Löschen bestätigen",
+            Title = titel,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false
         };
@@ -621,7 +699,7 @@ public partial class MainWindow : Window
 
         var jaButton = new Button
         {
-            Content = "Ja, löschen",
+            Content = bestaetigenText,
             Width = 120,
             Height = 36
         };
