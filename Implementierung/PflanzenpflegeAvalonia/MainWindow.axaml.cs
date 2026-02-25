@@ -9,15 +9,12 @@ using Avalonia.Media;
 using Microsoft.EntityFrameworkCore;
 using PflanzenpflegeAvalonia.Data;
 using PflanzenpflegeAvalonia.Models;
+using PflanzenpflegeAvalonia.Services;
 
 namespace PflanzenpflegeAvalonia;
 
 public partial class MainWindow : Window
 {
-    private const string PflegeStatusUeberfaellig = "Überfällig";
-    private const string PflegeStatusHeute = "Heute fällig";
-    private const string PflegeStatusDemnaechst = "Demnächst fällig";
-
     private readonly ObservableCollection<PflanzenUebersichtItem> _pflanzen = new();
     private readonly ObservableCollection<RegelViewItem> _regeln = new();
     private readonly ObservableCollection<PflegeEintragViewItem> _eintraege = new();
@@ -109,7 +106,7 @@ public partial class MainWindow : Window
 
         foreach (var p in pflanzen)
         {
-            var status = ErmittlePflegeStatus(p.Regeln, p.Eintraege);
+            var status = PflegeStatusService.ErmittlePflegeStatus(p.Regeln, p.Eintraege);
             var nextText = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy} ({status.Typ})";
 
             _pflanzen.Add(new PflanzenUebersichtItem
@@ -190,109 +187,8 @@ public partial class MainWindow : Window
             });
         }
 
-        var status = ErmittlePflegeStatus(regeln, eintraege);
+        var status = PflegeStatusService.ErmittlePflegeStatus(regeln, eintraege);
         NaechstePflegeText.Text = status.Date is null ? "-" : $"{status.Date:dd.MM.yyyy}\n{status.Typ}\n{status.Status}";
-    }
-
-    private static (DateTime? Date, string Typ, string Status) ErmittlePflegeStatus(
-        IEnumerable<PflegeRegel> regeln,
-        IEnumerable<PflegeEintrag> eintraege)
-    {
-        var heute = DateTime.Today;
-        var letzteEintraegeNachTyp = eintraege
-            .GroupBy(e => e.Typ)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Max(x => x.Datum.Date));
-
-        var kandidaten = regeln
-            .Where(r => r.IntervallTage > 0)
-            .Select(r =>
-            {
-                var letztePflege = letzteEintraegeNachTyp.TryGetValue(r.Typ, out var datum)
-                    ? datum
-                    : (DateTime?)null;
-                var (faelligkeit, status) = BerechneFaelligkeit(r, letztePflege, heute);
-                return new
-                {
-                    Regel = r,
-                    Faelligkeit = faelligkeit,
-                    Status = status
-                };
-            })
-            .OrderBy(x => StatusPrioritaet(x.Status))
-            .ThenBy(x => x.Faelligkeit)
-            .ThenBy(x => x.Regel.Typ)
-            .ToList();
-
-        if (kandidaten.Count == 0)
-        {
-            return (null, string.Empty, "-");
-        }
-
-        var best = kandidaten[0];
-        return (best.Faelligkeit, best.Regel.Typ, best.Status);
-    }
-
-    private static DateTime BerechneNaechstesDatum(PflegeRegel regel, DateTime heute)
-    {
-        var naechste = regel.Startdatum.Date;
-        while (naechste < heute)
-        {
-            naechste = naechste.AddDays(regel.IntervallTage);
-        }
-
-        return naechste;
-    }
-
-    private static (DateTime Faelligkeit, string Status) BerechneFaelligkeit(
-        PflegeRegel regel,
-        DateTime? letztePflege,
-        DateTime heute)
-    {
-        if (letztePflege is not null)
-        {
-            var naechsteNachPflege = letztePflege.Value.Date.AddDays(regel.IntervallTage);
-            if (naechsteNachPflege > heute)
-            {
-                return (naechsteNachPflege, PflegeStatusDemnaechst);
-            }
-
-            if (naechsteNachPflege == heute)
-            {
-                return (naechsteNachPflege, PflegeStatusHeute);
-            }
-
-            return (naechsteNachPflege, PflegeStatusUeberfaellig);
-        }
-
-        var start = regel.Startdatum.Date;
-        if (start > heute)
-        {
-            return (start, PflegeStatusDemnaechst);
-        }
-
-        var tageSeitStart = (heute - start).Days;
-        var rest = tageSeitStart % regel.IntervallTage;
-        var letzteFaelligkeit = heute.AddDays(-rest);
-
-        if (rest == 0)
-        {
-            return (heute, PflegeStatusHeute);
-        }
-
-        return (letzteFaelligkeit, PflegeStatusUeberfaellig);
-    }
-
-    private static int StatusPrioritaet(string status)
-    {
-        return status switch
-        {
-            PflegeStatusUeberfaellig => 0,
-            PflegeStatusHeute => 1,
-            PflegeStatusDemnaechst => 2,
-            _ => 3
-        };
     }
 
     private void LadeEintraegeFuerAuswahl()
@@ -425,8 +321,8 @@ public partial class MainWindow : Window
             .OrderByDescending(e => e.Datum)
             .Select(e => (DateTime?)e.Datum)
             .FirstOrDefault();
-        var (faelligkeit, status) = BerechneFaelligkeit(regel, letztePflege, heute);
-        if (status == PflegeStatusDemnaechst)
+        var (faelligkeit, status) = PflegeStatusService.BerechneFaelligkeit(regel, letztePflege, heute);
+        if (status == PflegeStatusService.PflegeStatusDemnaechst)
         {
             StatusSetzen($"Die ausgewählte Regel ist erst am {faelligkeit:dd.MM.yyyy} fällig.");
             return;
