@@ -74,3 +74,55 @@ Während des Projekts ist mir bewusst geworden, wie leicht man dazu verleitet wi
 Wenn die KI Aufgaben komplett übernimmt, geht ein wichtiger Teil des Lernprozesses verloren. Vor allem das eigene Experimentieren, Ausprobieren und auch das Scheitern sind entscheidend dafür, dass man Inhalte wirklich versteht. Wenn die KI immer perfekte Ergebnisse liefert, fehlen diese Erfahrungen, und damit auch wichtige Erkenntnisse.
 
 Ich habe festgestellt, dass es wichtig ist, meine eigene Rolle im Projekt nicht zu verlieren. Nur wenn ich aktiv mitarbeite, kann ich mein Wissen aufbauen und meine Fähigkeiten verbessern. Die KI kann dabei helfen, aber sie darf nicht meine eigene Identität, mein Denken oder mein Verständnis ersetzen.
+
+---
+
+# Ergänzung für Aufgabe 15 (Projektaufgaben 7 bis 12)
+
+## 1. Eingesetzte KI-Tools
+- **ChatGPT (OpenAI)**
+
+## 2. Bei welchen Aufgaben (7 bis 12) wurde KI eingesetzt?
+Die KI wurde in den Projektaufgaben 7 bis 12 als Unterstützung verwendet, insbesondere bei:
+- Strukturierung und Verbesserung einzelner Funktionen im C#-Code
+- Ableitung von Testfällen für Unit-Tests (inkl. Randfälle)
+- Formulierung und Überarbeitung von Dokumentationstexten
+- Unterstützung bei Git/GitHub-Fragen (Workflow, Commits, Push-Fehler)
+
+## 3. Verwendete Prompts (Beispiele)
+### Prompt 1
+> „Erstelle mir Unit-Tests für die Berechnung der nächsten Pflege und den Status (überfällig/heute/demnächst).“
+
+### Prompt 2
+> „Wie baue ich eine GitHub Action, die bei jedem Push automatisch `dotnet test` ausführt?“
+
+### Prompt 3
+> „Formuliere eine Release-Beschreibung für v1.1.0 mit Neu, Verbesserungen und Fehlerbehebungen.“
+
+## 4. Beispiel mit mehreren Prompts (erster und verbesserter Prompt)
+### Erster Prompt
+> „Mach mir Tests für mein Projekt.“
+
+### Verbesserter Prompt
+> „Erstelle gezielte xUnit-Tests für die Funktionen zur Pflege-Fälligkeitsberechnung.  
+Berücksichtige die Fälle: Startdatum in der Zukunft, heute fällig, überfällig und letzte Pflege vorhanden.“
+
+## 5. Übernommen, modifiziert, verworfen
+### Übernommen (1:1)
+- Einzelne Textbausteine für Dokumentation und Release Notes
+- Grundstruktur einiger Testmethoden
+
+### Modifiziert
+- KI-Vorschläge für Unit-Tests wurden fachlich angepasst (Namen, Daten, Assertions)
+- Codevorschläge für Funktionen wurden an die bestehende Projektstruktur angepasst
+
+### Verworfen
+- Vorschläge, die nicht zur vorhandenen Architektur passten
+- Zu generische oder fachlich unpassende Testfälle
+
+## 6. Hinweis zu Commits
+Die Commit-Historie enthält sowohl manuell erstellte Commits als auch teilweise automatisch durch GitHub erzeugte Commit-/Systemaktionen (z. B. durch GitHub-seitige Abläufe).
+
+## 7. Reflexion
+Durch den KI-Einsatz bei Aufgaben 7 bis 12 habe ich gelernt, Prompts präziser zu formulieren, damit die Vorschläge besser zu meinem Projekt passen.  
+Außerdem hat sich gezeigt, dass KI besonders hilfreich für Entwürfe und Testideen ist, die fachliche Kontrolle und finale Entscheidung aber immer manuell erfolgen muss. Ich habe darauf geachtet, Codevorschläge zunächst zu verstehen, bevor ich sie übernommen oder angepasst habe
