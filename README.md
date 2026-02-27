@@ -1,6 +1,9 @@
 
 # Pflanzenpflege-Assistent
 
+[![.NET Unit Tests](https://github.com/raphaelgafurow/pflanzenpflege-assistent/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/raphaelgafurow/pflanzenpflege-assistent/actions/workflows/dotnet-tests.yml)
+
+
 Desktop-Anwendung zur Verwaltung von Zimmerpflanzen und deren Pflegeintervallen.
 
 ## Projektinformationen
